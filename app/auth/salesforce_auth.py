@@ -3,7 +3,6 @@ import logging
 import requests
 import jwt
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.backends import default_backend
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +58,11 @@ class SalesforceTokenManager:
                 "exp": int(time.time()) + 300  # 5 min expiry
             }
 
-            # Load private key
+            # Load private key — pre-validated at config time by fix_private_key
+            # so this should never fail for a properly configured service
             private_key = serialization.load_pem_private_key(
                 self.private_key_pem.encode("utf-8"),
                 password=None,
-                backend=default_backend()
             )
 
             # Sign the JWT

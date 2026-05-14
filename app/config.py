@@ -65,7 +65,44 @@ class Settings(BaseSettings):
             raise ValueError("ENVIRONMENT must be dev, stage, or prod")
         return v
 
-    model_config = {"env_file": ".env", "case_sensitive": True}
+    @field_validator("SF_PRIVATE_KEY_PEM")
+    @classmethod
+    def fix_private_key(cls, v):
+       
+        from cryptography.hazmat.primitives import serialization
+
+        # Strip surrounding whitespace
+        v = v.strip()
+
+        # Strip residual surrounding quotes (single or double)
+        if (v.startswith('"') and v.endswith('"')) or \
+           (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1].strip()
+
+        # Normalize escape sequences — handle double-escaped first, then single
+        # Double-escaped: literal four chars \\n -> real newline
+        v = v.replace("\\\\n", "\n")
+        # Single-escaped: literal two chars \n -> real newline
+        v = v.replace("\\n", "\n")
+
+        # Ensure terminal newline (OpenSSL requires it)
+        if not v.endswith("\n"):
+            v += "\n"
+
+        # Fail-fast: verify the key is actually loadable
+        try:
+            serialization.load_pem_private_key(
+                v.encode("utf-8"),
+                password=None,
+            )
+        except Exception as e:
+            raise ValueError(
+                f"SF_PRIVATE_KEY_PEM cannot be parsed as a valid PEM private key. "
+                f"Ensure it is a valid RSA key in PEM format "
+                f"(PKCS#8 or traditional RSA). Error: {e}"
+            )
+
+        return v
 
 
 def validate_settings():

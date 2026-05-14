@@ -36,4 +36,10 @@ Thumbs.db
 logs/
 
 # Nomad
-*.hcl.bak
+
+
+
+
+private_key.pem
+public_key.crt
+private_key_rsa.pem
