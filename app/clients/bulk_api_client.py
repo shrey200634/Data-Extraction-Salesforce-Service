@@ -24,8 +24,7 @@ class SalesforceBulkAPIClient:
     Wraps Salesforce Bulk API 2.0.
     Handles job lifecycle: create → poll → paginate → cleanup.
 
-    Java equivalent: A typed REST client built with
-    RestTemplate or OkHttp.
+    
     """
 
     def __init__(self, token_manager):

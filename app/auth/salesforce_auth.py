@@ -12,8 +12,7 @@ class SalesforceTokenManager:
     Handles OAuth 2.0 JWT Bearer flow with Salesforce.
     Caches the token and auto-refreshes 5 min before expiry.
 
-    Java equivalent: A @Component that wraps OAuth2RestTemplate
-    with token refresh logic.
+   
     """
 
     def __init__(self, settings):
