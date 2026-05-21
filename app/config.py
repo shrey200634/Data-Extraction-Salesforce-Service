@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     SF_USERNAME: str
     SF_LOGIN_URL: str = "https://test.salesforce.com"
 
+
+    # HMAC auth 
+
+    HMAC_SIGNATURE_MAX_AGE: int = 300  # 5 minutes
+
+
     # Flask
     FLASK_DEBUG: bool = False
     SECRET_KEY: str

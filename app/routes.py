@@ -2,6 +2,7 @@ import logging
 from flask import Blueprint, jsonify, request
 from app.config import validate_settings
 from app.auth.salesforce_auth import SalesforceTokenManager
+from app.auth.hmac_auth import verify_hmac
 from app.clients.bulk_api_client import SalesforceBulkAPIClient
 from app.services.extraction_service import ExtractionService
 from app.services.polling_service import PollingService
@@ -48,6 +49,7 @@ def health():
 
 # ── Scan endpoints ────────────────────────────────────────
 @api.route("/scan/start", methods=["POST"])
+@verify_hmac
 def scan_start():
     body = request.get_json()
 
@@ -74,6 +76,7 @@ def scan_start():
 
 
 @api.route("/scan/status/<scan_id>", methods=["GET"])
+@verify_hmac
 def scan_status(scan_id):
     logger.info(f"Scan status requested — scan_id={scan_id}")
 
@@ -89,6 +92,7 @@ def scan_status(scan_id):
 
 
 @api.route("/scan/cancel/<scan_id>", methods=["POST"])
+@verify_hmac
 def scan_cancel(scan_id):
     logger.info(f"Scan cancel requested — scan_id={scan_id}")
 
@@ -104,6 +108,7 @@ def scan_cancel(scan_id):
 
 
 @api.route("/scan/resume/<scan_id>", methods=["POST"])
+@verify_hmac
 def scan_resume(scan_id):
     logger.info(f"Scan resume requested — scan_id={scan_id}")
 
@@ -127,6 +132,7 @@ def scan_resume(scan_id):
 
 
 @api.route("/scan/list", methods=["GET"])
+@verify_hmac
 def scan_list():
     org_id = request.args.get("org_id")
     status = request.args.get("status")
@@ -149,6 +155,7 @@ def scan_list():
 
 # ── Maintenance endpoints ─────────────────────────────────
 @api.route("/maintenance/cleanup", methods=["POST"])
+@verify_hmac
 def maintenance_cleanup():
     body = request.get_json() or {}
     older_than_days = body.get("older_than_days", 30)
@@ -164,6 +171,7 @@ def maintenance_cleanup():
 
 
 @api.route("/maintenance/status", methods=["GET"])
+@verify_hmac
 def maintenance_status():
     checks = {
         "database": "ok",
@@ -182,3 +190,89 @@ def maintenance_status():
         "status": "ok" if all(v == "ok" for v in checks.values()) else "degraded",
         "checks": checks
     }), 200
+
+
+# ── Objects endpoint ──────────────────────────────────────
+@api.route("/objects", methods=["GET"])
+@verify_hmac
+def get_objects():
+    """Returns supported Salesforce objects with their SOQL templates."""
+    supported_objects = [
+        {
+            "name": "Contact",
+            "label": "Contacts",
+            "soql_template": "SELECT {fields} FROM Contact {where_clause} ORDER BY LastModifiedDate ASC",
+            "default_fields": ["Id", "FirstName", "LastName", "Email", "Phone", "AccountId", "CreatedDate", "LastModifiedDate"],
+            "supports_incremental": True
+        },
+        {
+            "name": "Account",
+            "label": "Accounts",
+            "soql_template": "SELECT {fields} FROM Account {where_clause} ORDER BY LastModifiedDate ASC",
+            "default_fields": ["Id", "Name", "Industry", "BillingCity", "BillingCountry", "CreatedDate", "LastModifiedDate"],
+            "supports_incremental": True
+        },
+        {
+            "name": "Opportunity",
+            "label": "Opportunities",
+            "soql_template": "SELECT {fields} FROM Opportunity {where_clause} ORDER BY LastModifiedDate ASC",
+            "default_fields": ["Id", "Name", "StageName", "Amount", "CloseDate", "AccountId", "CreatedDate", "LastModifiedDate"],
+            "supports_incremental": True
+        },
+        {
+            "name": "Task",
+            "label": "Activities",
+            "soql_template": "SELECT {fields} FROM Task {where_clause} ORDER BY LastModifiedDate ASC",
+            "default_fields": ["Id", "Subject", "Status", "Priority", "WhoId", "WhatId", "CreatedDate", "LastModifiedDate"],
+            "supports_incremental": True
+        },
+        {
+            "name": "Lead",
+            "label": "Leads",
+            "soql_template": "SELECT {fields} FROM Lead {where_clause} ORDER BY LastModifiedDate ASC",
+            "default_fields": ["Id", "FirstName", "LastName", "Email", "Company", "Status", "CreatedDate", "LastModifiedDate"],
+            "supports_incremental": True
+        },
+        {
+            "name": "User",
+            "label": "Users",
+            "soql_template": "SELECT {fields} FROM User {where_clause} ORDER BY LastModifiedDate ASC",
+            "default_fields": ["Id", "Name", "Email", "Username", "IsActive", "CreatedDate", "LastModifiedDate"],
+            "supports_incremental": True
+        },
+        {
+            "name": "CampaignMember",
+            "label": "Campaign Members",
+            "soql_template": "SELECT {fields} FROM CampaignMember {where_clause} ORDER BY LastModifiedDate ASC",
+            "default_fields": ["Id", "CampaignId", "ContactId", "LeadId", "Status", "CreatedDate", "LastModifiedDate"],
+            "supports_incremental": True
+        }
+    ]
+    return jsonify({"supported_objects": supported_objects, "total": len(supported_objects)}), 200
+
+
+# ── Batch info endpoint ───────────────────────────────────
+@api.route("/batch/info", methods=["GET"])
+@verify_hmac
+def batch_info():
+    """Returns Salesforce org metadata and API quota info."""
+    try:
+        token, instance_url = token_manager.get_token()
+        return jsonify({
+            "org": {
+                "instance_url": instance_url,
+                "api_version": "59.0",
+            },
+            "api_limits": {
+                "bulk_api_jobs": {
+                    "max_concurrent": settings.MAX_CONCURRENT_SCANS
+                }
+            },
+            "token_status": "valid"
+        }), 200
+    except Exception as e:
+        logger.error(f"Batch info failed: {str(e)}")
+        return jsonify({
+            "error": "salesforce_connection_failed",
+            "message": str(e)
+        }), 503
