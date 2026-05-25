@@ -4,7 +4,8 @@ from sqlalchemy import Column, String, DateTime, Integer, ForeignKey
 from app.models.scan import Base
 
 
-class JobStatus(str):
+class JobStatus:
+    """String constants for job status."""
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETE = "complete"
@@ -15,7 +16,6 @@ class Job(Base):
     """
     Represents one Salesforce Bulk API job for a single object.
     One Scan has many Jobs (one per SF object).
-   
     """
     __tablename__ = "jobs"
 

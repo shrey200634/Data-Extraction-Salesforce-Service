@@ -130,10 +130,10 @@ class SalesforceBulkAPIClient:
         response.raise_for_status()
         logger.info(f"Job {job_id} deleted from Salesforce")
 
-    def build_query(self, sf_object: str) -> str:
+    def build_query(self, sf_object: str, last_modified_after: str = None) -> str:
         """
         Builds SOQL query for each Salesforce object.
-        Java equivalent: building a JPA/SQL query string.
+        Supports incremental extraction via last_modified_after filter (ISO8601 format).
         """
         fields = {
             "Contact": "Id, FirstName, LastName, Email, Phone, AccountId, CreatedDate, LastModifiedDate",
@@ -145,4 +145,12 @@ class SalesforceBulkAPIClient:
             "CampaignMember": "Id, CampaignId, ContactId, LeadId, Status, CreatedDate, LastModifiedDate"
         }
         selected = fields.get(sf_object, "Id, CreatedDate, LastModifiedDate")
-        return f"SELECT {selected} FROM {sf_object}"
+
+        query = f"SELECT {selected} FROM {sf_object}"
+
+        # Add incremental filter if provided
+        if last_modified_after:
+            query += f" WHERE LastModifiedDate >= {last_modified_after}"
+
+        query += " ORDER BY LastModifiedDate ASC"
+        return query

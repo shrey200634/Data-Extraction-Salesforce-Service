@@ -25,6 +25,13 @@ def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = settings.SECRET_KEY
 
+    # Initialize database — creates tables if they don't exist
+    try:
+        from app.database import init_db
+        init_db()
+    except Exception as e:
+        logger.warning(f"Database init failed (non-fatal in dev): {e}")
+
     # Register all routes from routes.py
     app.register_blueprint(api)
 

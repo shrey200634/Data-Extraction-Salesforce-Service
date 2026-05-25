@@ -62,10 +62,14 @@ def scan_start():
     org_id = body.get("org_id")
     scan_type = body.get("scan_type", "full")
 
-    logger.info(f"Scan start requested — org_id={org_id} type={scan_type}")
+    # Optional incremental filter — extract only records modified after this timestamp
+    filters = body.get("filters", {})
+    last_modified_after = filters.get("last_modified_after")
+
+    logger.info(f"Scan start requested — org_id={org_id} type={scan_type} after={last_modified_after}")
 
     try:
-        scan = extraction_svc.start_scan(org_id, scan_type)
+        scan = extraction_svc.start_scan(org_id, scan_type, last_modified_after=last_modified_after)
         return jsonify(scan), 202
     except Exception as e:
         logger.error(f"Scan start failed — {str(e)}")
@@ -162,12 +166,28 @@ def maintenance_cleanup():
 
     logger.info(f"Cleanup requested — older_than_days={older_than_days}")
 
-    # Cleanup is DB-level — skipping for now until DB is wired
-    return jsonify({
-        "status": "ok",
-        "message": f"Cleanup triggered for records older than {older_than_days} days",
-        "deleted_count": 0
-    }), 200
+    try:
+        from app.database import get_session
+        from app.services.maintenance_service import MaintenanceService
+
+        session = get_session()
+        try:
+            svc = MaintenanceService(session)
+            deleted = svc.cleanup(older_than_days)
+            return jsonify({
+                "status": "ok",
+                "message": f"Cleanup completed",
+                "deleted_count": deleted,
+                "older_than_days": older_than_days,
+            }), 200
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+        return jsonify({
+            "error": "cleanup_failed",
+            "message": str(e),
+        }), 500
 
 
 @api.route("/maintenance/status", methods=["GET"])
@@ -180,11 +200,29 @@ def maintenance_status():
         "salesforce": "ok"
     }
 
-    # Basic connectivity checks
+    # Check MinIO
     try:
         minio_client.file_exists("healthcheck")
     except Exception:
         checks["minio"] = "error"
+
+    # Check Database
+    try:
+        from app.database import get_session
+        from sqlalchemy import text
+        session = get_session()
+        try:
+            session.execute(text("SELECT 1"))
+        finally:
+            session.close()
+    except Exception:
+        checks["database"] = "error"
+
+    # Check Salesforce token
+    try:
+        token_manager.get_token()
+    except Exception:
+        checks["salesforce"] = "error"
 
     return jsonify({
         "status": "ok" if all(v == "ok" for v in checks.values()) else "degraded",
